@@ -16,8 +16,8 @@ use windows::Win32::Foundation::{HWND, LPARAM, TRUE};
 use windows::Win32::Graphics::Direct3D11::{ID3D11Device, ID3D11DeviceContext, ID3D11Texture2D};
 use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
 use windows::Win32::UI::WindowsAndMessaging::{
-    EnumWindows, GetShellWindow, GetWindow, GetWindowTextLengthW, GetWindowTextW, IsIconic,
-    IsWindowVisible, GW_OWNER,
+    EnumWindows, GetShellWindow, GetWindow, GetWindowLongW, GetWindowTextLengthW, GetWindowTextW,
+    IsIconic, IsWindowVisible, GWL_EXSTYLE, GW_OWNER, WS_EX_APPWINDOW, WS_EX_TOOLWINDOW,
 };
 
 /// One capturable monitor.
@@ -84,8 +84,10 @@ pub fn list_targets() -> anyhow::Result<Vec<CaptureTarget>> {
     dxgi::list_targets()
 }
 
-/// Lists visible, non-minimized top-level windows with a title, for
-/// window-specific capture.
+/// Lists visible, non-minimized, titled top-level application windows for
+/// window-specific capture — the same "real applications only" heuristic
+/// used by Alt-Tab and app-picker UIs like Discord's, filtering out
+/// toolbars, notification popups, and other overlay/utility windows.
 pub fn list_windows() -> anyhow::Result<Vec<WindowTarget>> {
     let mut targets: Vec<WindowTarget> = Vec::new();
     unsafe {
@@ -130,6 +132,19 @@ unsafe extern "system" fn enum_windows_proc(hwnd: HWND, lparam: LPARAM) -> BOOL 
         if GetWindow(hwnd, GW_OWNER).is_ok() {
             // Has an owner window (tooltip, popup, etc.), not a top-level
             // app window.
+            return TRUE;
+        }
+        // The standard Alt-Tab / "real application window" heuristic:
+        // WS_EX_TOOLWINDOW marks floating toolbars, notification popups,
+        // and other overlay/utility windows that aren't meant to represent
+        // an application — unless the window explicitly opts back in with
+        // WS_EX_APPWINDOW. Excluding these also filters out some windows
+        // that Windows.Graphics.Capture simply can't create a capture item
+        // for in the first place.
+        let ex_style = GetWindowLongW(hwnd, GWL_EXSTYLE) as u32;
+        let is_tool_window = ex_style & WS_EX_TOOLWINDOW.0 != 0;
+        let is_app_window = ex_style & WS_EX_APPWINDOW.0 != 0;
+        if is_tool_window && !is_app_window {
             return TRUE;
         }
         let len = GetWindowTextLengthW(hwnd);
