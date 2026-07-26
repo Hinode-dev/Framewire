@@ -6,6 +6,7 @@ dist/
 .DS_Store
 *.png
 !/host/icons/**/*.png
+!/backend/site/favicon.png
 *.log
 server/.env
 host/.cargo/config.toml
