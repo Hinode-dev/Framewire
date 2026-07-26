@@ -1,3 +1,9 @@
+// No console window on launch — regular users double-click framewire.exe
+// and get the GUI; the log output means nothing to them. A console
+// already attached (e.g. running from a terminal, or --headless in CI)
+// is inherited independently of this and keeps working as before.
+#![windows_subsystem = "windows"]
+
 mod capture;
 mod debug_dump;
 mod encode;
