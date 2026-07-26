@@ -14,6 +14,10 @@ services:
     # proxy (see the shared gateway's Caddyfile for the public hostname).
     # FW_STUN_SERVER defaults to a public STUN server (see backend/src/config.rs);
     # override in server/.env only if you want to point at a different one.
+    environment:
+      - FW_STUN_SERVER
+      - FW_HOST_TOKEN
+      - FW_MIN_HOST_VERSION
     networks:
       - gateway-net
 

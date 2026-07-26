@@ -1,6 +1,7 @@
 <div align="center">
 
-# Framewire
+# <img src="backend/site/favicon.png" width="24" alt="Framewire Icon" /> Framewire
+**A high-fps, low-latency one-way game screen sharing tool**
 
 **A high-fps, low-latency one-way game screen sharing tool**
 
