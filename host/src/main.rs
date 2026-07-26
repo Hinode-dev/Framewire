@@ -32,6 +32,10 @@ pub struct HostStatus {
     pub height: u32,
     /// Current NVENC target bitrate from bandwidth adaptation.
     pub current_bitrate_bps: u32,
+    /// The router's public IP if UPnP port forwarding was set up (see
+    /// `upnp.rs`) — `None` means viewers outside the host's own network
+    /// only connect if plain STUN happens to succeed (no TURN fallback).
+    pub port_forward: Option<String>,
     pub error: Option<String>,
 }
 
@@ -265,6 +269,7 @@ pub async fn run_pipeline(
     {
         let mut s = status.lock().unwrap();
         s.running = true;
+        s.port_forward = frame_sender.port_forward_ip();
     }
 
     let forward_sender = frame_sender.clone();

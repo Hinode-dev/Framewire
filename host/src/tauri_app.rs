@@ -142,6 +142,7 @@ struct HostStatusDto {
     width: u32,
     height: u32,
     current_bitrate_bps: u32,
+    port_forward: Option<String>,
     error: Option<String>,
     capture_warning: Option<String>,
 }
@@ -336,6 +337,7 @@ fn spawn_status_emitter(app: &tauri::AppHandle) {
                     width: status.width,
                     height: status.height,
                     current_bitrate_bps: status.current_bitrate_bps,
+                    port_forward: status.port_forward,
                     error: status.error,
                     capture_warning: warning,
                 }

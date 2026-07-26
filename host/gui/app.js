@@ -23,6 +23,7 @@ const roomCodeEl = document.getElementById('room-code');
 const watchUrlLine = document.getElementById('watch-url-line');
 const watchUrlEl = document.getElementById('watch-url');
 const metricsEl = document.getElementById('metrics');
+const networkStatusEl = document.getElementById('network-status');
 const preparingText = document.getElementById('preparing-text');
 const captureWarningEl = document.getElementById('capture-warning');
 const errorTextEl = document.getElementById('error-text');
@@ -249,8 +250,12 @@ function applyStatus(status) {
       `Resolution: ${status.width}x${status.height}   ` +
       `FPS: ${status.measuredFps.toFixed(1)}   ` +
       `Bitrate: ${Math.round(status.currentBitrateBps / 1_000_000)}Mbps`;
+    networkStatusEl.textContent = status.portForward
+      ? `Cross-network viewers: available (${status.portForward})`
+      : 'Cross-network viewers: not available (same-network viewers only)';
   } else {
     metricsEl.textContent = '';
+    networkStatusEl.textContent = '';
   }
 
   if (running && status.captureWarning) {

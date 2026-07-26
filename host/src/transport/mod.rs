@@ -262,6 +262,13 @@ impl FrameSender {
     pub fn target_bitrate_bps(&self) -> u32 {
         self.state.target_bitrate_bps.load(Ordering::Relaxed)
     }
+
+    /// The router's public IP if a UPnP port mapping was set up, for
+    /// display in the GUI — `None` means viewers outside the host's own
+    /// network only connect if plain STUN happens to succeed.
+    pub fn port_forward_ip(&self) -> Option<String> {
+        self.state.port_forward.as_ref().map(|pf| pf.external_ip.to_string())
+    }
 }
 
 // ============================================================
