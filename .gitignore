@@ -9,5 +9,7 @@ dist/
 !/backend/site/favicon.png
 *.log
 server/.env
+server/downloads/*
+!server/downloads/.gitkeep
 host/.cargo/config.toml
 host/gen/

@@ -18,6 +18,8 @@
 //! - `GET /ice-config`: STUN configuration for viewers. No TURN: a viewer
 //!   that can't reach the host via P2P simply fails to connect.
 //! - `GET /`: the product/download page (see `site.rs`).
+//! - `GET /download/*`: static files served from `FW_DOWNLOADS_DIR` — drop
+//!   `framewire.exe` there to publish it, no rebuild needed.
 
 mod config;
 mod ratelimit;
@@ -36,6 +38,7 @@ use axum::Router;
 use futures_util::{SinkExt, StreamExt};
 use serde::Deserialize;
 use serde_json::{json, Value};
+use tower_http::services::ServeDir;
 
 use config::Config;
 use ratelimit::FailureRateLimiter;
@@ -54,6 +57,7 @@ struct AppState {
 async fn main() -> anyhow::Result<()> {
     let config = Config::from_env();
     let bind_addr = config.bind_addr.clone();
+    let downloads_dir = config.downloads_dir.clone();
     let state = Arc::new(AppState {
         config,
         rooms: RoomStore::default(),
@@ -66,7 +70,8 @@ async fn main() -> anyhow::Result<()> {
         .route("/watch/{room_code}", get(watch_page))
         .route("/ice-config", get(ice_config))
         .merge(site::router())
-        .with_state(state);
+        .with_state(state)
+        .nest_service("/download", ServeDir::new(downloads_dir));
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;
     println!("[backend] listening on http://{bind_addr}/");

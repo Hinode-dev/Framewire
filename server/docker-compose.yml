@@ -17,6 +17,12 @@ services:
     environment:
       - FW_STUN_SERVER
       - FW_MIN_HOST_VERSION
+      - FW_DOWNLOADS_DIR=/downloads
+    # Drop framewire.exe (and an optional version.txt) into server/downloads/
+    # on this machine to publish it at /download/framewire.exe — no rebuild
+    # or redeploy needed, the volume is just read straight off disk.
+    volumes:
+      - ./downloads:/downloads:ro
     networks:
       - gateway-net
 

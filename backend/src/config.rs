@@ -11,6 +11,12 @@ pub struct Config {
     /// version at all — is rejected before a room is created, so a known-bad
     /// old build can't load the server. `None` accepts any version.
     pub min_host_version: Option<String>,
+    /// Directory served at `/download/*` (`FW_DOWNLOADS_DIR`) — drop
+    /// `framewire.exe` in here on the host machine to publish it, no
+    /// rebuild or redeploy needed. Defaults to a local `downloads/` folder
+    /// for `cargo run`; the deployed container mounts this from a bind
+    /// volume (see `server/docker-compose.yml`).
+    pub downloads_dir: String,
 }
 
 impl Config {
@@ -19,6 +25,7 @@ impl Config {
             bind_addr: env_or("FW_BACKEND_BIND", "0.0.0.0:8090"),
             stun_server: env_or("FW_STUN_SERVER", "stun.l.google.com:19302"),
             min_host_version: std::env::var("FW_MIN_HOST_VERSION").ok(),
+            downloads_dir: env_or("FW_DOWNLOADS_DIR", "downloads"),
         }
     }
 }
