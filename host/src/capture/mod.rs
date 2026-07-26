@@ -56,6 +56,11 @@ pub enum CaptureFrame {
     /// Recovered automatically from DXGI_ERROR_ACCESS_LOST; the caller may
     /// continue.
     Recovered,
+    /// DXGI Desktop Duplication couldn't recover from repeated
+    /// `DXGI_ERROR_ACCESS_LOST` (some exclusive-fullscreen games keep
+    /// re-triggering it). The caller should fall back to capturing the
+    /// same monitor via WGC rather than treat this as fatal.
+    GiveUp,
 }
 
 pub trait ScreenCapture {

@@ -251,13 +251,13 @@ impl ScreenCapture for DxgiCapture {
                 // explicit error past a threshold, rather than spinning
                 // forever.
                 if self.consecutive_access_lost > 200 {
-                    return Err(anyhow!(
-                        "DXGI_ERROR_ACCESS_LOSTが{}回連続で発生し、キャプチャを継続できません。\
+                    eprintln!(
+                        "[capture] DXGI_ERROR_ACCESS_LOSTが{}回連続で発生し、DXGIでの継続を断念します。\
                          排他的フルスクリーンのゲーム・アンチチート/キャプチャ防止機能との非互換の\
-                         可能性があります。ボーダーレスウィンドウで\
-                         動作するか試してください。",
+                         可能性があります。WGCへフォールバックします。",
                         self.consecutive_access_lost
-                    ));
+                    );
+                    return Ok(CaptureFrame::GiveUp);
                 }
                 if self.consecutive_access_lost > 5 {
                     eprintln!(

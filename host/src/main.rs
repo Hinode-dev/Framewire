@@ -16,6 +16,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use anyhow::Context;
 use capture::CaptureFrame;
 
 /// State shared between the GUI and the streaming pipeline: the pipeline
@@ -334,6 +335,7 @@ fn run_capture_loop(
             output_index: args.output_index,
         },
     };
+    let mut current_source = source;
     let (mut cap, mut converter, mut encoder) =
         build_capture_stack(source, args.capture_backend, args.fps, args.bitrate_bps)?;
     {
@@ -395,6 +397,7 @@ fn run_capture_loop(
                     cap = new_cap;
                     converter = new_converter;
                     encoder = new_encoder;
+                    current_source = new_source;
                     if let Ok(mut s) = status.lock() {
                         s.width = cap.width();
                         s.height = cap.height();
@@ -422,6 +425,28 @@ fn run_capture_loop(
         wait_sum += t_wait_start.elapsed();
 
         match frame {
+            CaptureFrame::GiveUp => {
+                eprintln!(
+                    "[capture] DXGI couldn't recover, falling back to WGC for the current target"
+                );
+                let (new_cap, new_converter, new_encoder) = build_capture_stack(
+                    current_source,
+                    capture::Backend::ForceWgc,
+                    args.fps,
+                    current_bitrate_bps,
+                )
+                .context("DXGIで復旧できず、WGCへのフォールバックも失敗しました")?;
+                cap = new_cap;
+                converter = new_converter;
+                encoder = new_encoder;
+                if let Ok(mut s) = status.lock() {
+                    s.width = cap.width();
+                    s.height = cap.height();
+                }
+                frame_count = 0;
+                next_due = std::time::Instant::now();
+                need_idr_after_skip = false;
+            }
             CaptureFrame::Frame(tex) => {
                 let now = std::time::Instant::now();
                 if now < next_due {
