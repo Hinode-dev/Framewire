@@ -19,11 +19,13 @@
 //! - `GET /watch/{room_code}`: serves the viewer page.
 //! - `GET /ice-config`: STUN configuration for viewers. No TURN: a viewer
 //!   that can't reach the host via P2P simply fails to connect.
+//! - `GET /`: the product/download page (see `site.rs`).
 
 mod config;
 mod ratelimit;
 mod roomcode;
 mod rooms;
+mod site;
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -66,6 +68,7 @@ async fn main() -> anyhow::Result<()> {
         .route("/v1/rooms/{room_code}/viewer-signal", get(viewer_signal))
         .route("/watch/{room_code}", get(watch_page))
         .route("/ice-config", get(ice_config))
+        .merge(site::router())
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind(&bind_addr).await?;

@@ -8,7 +8,7 @@
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6.svg)](#requirements)
 [![Status: WIP](https://img.shields.io/badge/status-personal%20MVP%20%2F%20work%20in%20progress-orange.svg)](#status--roadmap)
 
-**[Download for Windows](https://hinode-dev.github.io/Framewire/)**
+**[Download for Windows](https://framewire.hinodeent.com/)**
 
 </div>
 
