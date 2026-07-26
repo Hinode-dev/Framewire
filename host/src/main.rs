@@ -36,6 +36,12 @@ pub struct HostStatus {
     /// `upnp.rs`) — `None` means viewers outside the host's own network
     /// only connect if plain STUN happens to succeed (no TURN fallback).
     pub port_forward: Option<String>,
+    /// Set when a live `switch_capture_target` attempt fails (e.g. the new
+    /// window closed, or the capture stack couldn't be rebuilt). The
+    /// stream keeps running on the previous target; this is just visible
+    /// feedback that the switch itself didn't take, since the console is
+    /// hidden and can't show the underlying log line.
+    pub switch_error: Option<String>,
     pub error: Option<String>,
 }
 
@@ -407,6 +413,7 @@ fn run_capture_loop(
                     if let Ok(mut s) = status.lock() {
                         s.width = cap.width();
                         s.height = cap.height();
+                        s.switch_error = None;
                     }
                     // Forces an IDR on the next frame (see the force_idr
                     // check below) since the new encoder starts a fresh
@@ -422,6 +429,9 @@ fn run_capture_loop(
                 }
                 Err(e) => {
                     eprintln!("[capture] failed to switch capture target: {e:#} (keeping current target)");
+                    if let Ok(mut s) = status.lock() {
+                        s.switch_error = Some(e.to_string());
+                    }
                 }
             }
         }

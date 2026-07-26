@@ -1,7 +1,7 @@
 //! BGRA -> NV12 color conversion via a D3D11 compute shader. Runs entirely
 //! on the GPU; frame data never touches the CPU.
 
-use anyhow::anyhow;
+use anyhow::{anyhow, Context};
 use windows::Win32::Graphics::Direct3D::Fxc::D3DCompile;
 use windows::Win32::Graphics::Direct3D::{ID3DBlob, D3D_SHADER_MACRO};
 use windows::Win32::Graphics::Direct3D11::{
@@ -45,7 +45,11 @@ impl ColorConverter {
             MiscFlags: 0,
         };
         let mut nv12_texture: Option<ID3D11Texture2D> = None;
-        unsafe { device.CreateTexture2D(&nv12_desc, None, Some(&mut nv12_texture))? };
+        // NV12 is 4:2:0 chroma-subsampled — width/height must both be even,
+        // or CreateTexture2D fails with E_INVALIDARG (odd-sized capture
+        // targets, e.g. some non-game utility windows, can hit this).
+        unsafe { device.CreateTexture2D(&nv12_desc, None, Some(&mut nv12_texture)) }
+            .with_context(|| format!("NV12テクスチャ作成に失敗（{width}x{height}、NV12は幅・高さが偶数である必要があります）"))?;
         let nv12_texture = nv12_texture.ok_or_else(|| anyhow!("NV12テクスチャ作成に失敗"))?;
 
         let y_uav = create_plane_uav(device, &nv12_texture, DXGI_FORMAT_R8_UNORM)?;

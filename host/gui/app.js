@@ -26,6 +26,7 @@ const metricsEl = document.getElementById('metrics');
 const networkStatusEl = document.getElementById('network-status');
 const preparingText = document.getElementById('preparing-text');
 const captureWarningEl = document.getElementById('capture-warning');
+const switchErrorEl = document.getElementById('switch-error');
 const errorTextEl = document.getElementById('error-text');
 
 let monitorTargets = [];
@@ -263,6 +264,13 @@ function applyStatus(status) {
     captureWarningEl.style.display = '';
   } else {
     captureWarningEl.style.display = 'none';
+  }
+
+  if (running && status.switchError) {
+    switchErrorEl.textContent = `⚠ Couldn't switch target: ${status.switchError}`;
+    switchErrorEl.style.display = '';
+  } else {
+    switchErrorEl.style.display = 'none';
   }
 
   if (status.error) {
