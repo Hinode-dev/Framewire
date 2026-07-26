@@ -12,7 +12,6 @@ const refreshWindowsButton = document.getElementById('refresh-windows');
 const fpsSelect = document.getElementById('fps-select');
 const bitrateSlider = document.getElementById('bitrate-slider');
 const publicHostInput = document.getElementById('public-host-input');
-const hostTokenInput = document.getElementById('host-token-input');
 const settingsCard = document.getElementById('settings-card');
 const startStopButton = document.getElementById('start-stop-button');
 
@@ -60,7 +59,6 @@ streamingModeToggle.addEventListener('click', (e) => {
   setSegmented(streamingModeToggle, button.dataset.value);
   const isMesh = button.dataset.value === 'mesh';
   publicHostRow.style.display = isMesh ? 'none' : '';
-  document.getElementById('host-token-row').style.display = isMesh ? '' : 'none';
 });
 
 // Thumbnails are static snapshots (matching Discord's actual picker
@@ -157,7 +155,6 @@ async function init() {
   setSegmented(streamingModeToggle, defaults.defaultUseMesh ? 'mesh' : 'direct');
   const isMesh = defaults.defaultUseMesh;
   publicHostRow.style.display = isMesh ? 'none' : '';
-  document.getElementById('host-token-row').style.display = isMesh ? '' : 'none';
 }
 
 function currentSettings() {
@@ -173,7 +170,6 @@ function currentSettings() {
     bitrateMbps: Number(bitrateSlider.value),
     useMesh: segmentedValue(streamingModeToggle) === 'mesh',
     publicHost: publicHostInput.value,
-    hostToken: hostTokenInput.value,
   };
 }
 

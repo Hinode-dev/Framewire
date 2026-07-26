@@ -432,7 +432,6 @@ enum HostInbound {
     Offer { viewer_id: String, sdp: String },
     ViewerLeft { viewer_id: String },
     VersionRejected { min_version: String },
-    Unauthorized,
 }
 
 /// Returned by [`connect_host_signal`] when the backend rejects this build
@@ -456,23 +455,6 @@ impl std::fmt::Display for VersionRejected {
 
 impl std::error::Error for VersionRejected {}
 
-/// Returned by [`connect_host_signal`] when the backend rejects this host's
-/// `--host-token` (missing or not matching the backend's `FW_HOST_TOKEN`).
-/// Not retryable: the token isn't going to fix itself on the next attempt.
-#[derive(Debug)]
-pub struct Unauthorized;
-
-impl std::fmt::Display for Unauthorized {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(
-            f,
-            "backendへの認証に失敗しました。--host-tokenがbackendのFW_HOST_TOKENと一致しているか確認してください。"
-        )
-    }
-}
-
-impl std::error::Error for Unauthorized {}
-
 /// Connects outbound to the backend over WebSocket and handles per-viewer
 /// offer/answer exchange for the rest of the stream's lifetime. The host
 /// never opens an inbound port in this mode.
@@ -484,12 +466,10 @@ pub async fn start_mesh_publisher(
     backend_ws_base: String,
     ice_servers: Vec<RTCIceServer>,
     bitrate_bps: u32,
-    host_token: String,
 ) -> anyhow::Result<(FrameSender, String)> {
     let state = new_app_state(ice_servers, bitrate_bps);
 
-    let (room_code, outbound, ws_rx) =
-        connect_host_signal(&backend_ws_base, None, &host_token).await?;
+    let (room_code, outbound, ws_rx) = connect_host_signal(&backend_ws_base, None).await?;
     println!("[transport] connected to backend signaling (room={room_code})");
 
     let task_state = state.clone();
@@ -497,7 +477,7 @@ pub async fn start_mesh_publisher(
     tokio::spawn(async move {
         run_signal_connection(&task_state, ws_rx, outbound).await;
         println!("[transport] signaling connection to backend dropped, reconnecting...");
-        reconnect_loop(&backend_ws_base, task_room_code, &task_state, &host_token).await;
+        reconnect_loop(&backend_ws_base, task_room_code, &task_state).await;
     });
 
     Ok((FrameSender { state }, room_code))
@@ -510,10 +490,8 @@ pub async fn start_mesh_publisher(
 async fn connect_host_signal(
     backend_ws_base: &str,
     requested_code: Option<&str>,
-    host_token: &str,
 ) -> anyhow::Result<(String, OutboundHandle, WsSource)> {
     use tokio_tungstenite::tungstenite::client::IntoClientRequest;
-    use tokio_tungstenite::tungstenite::http::HeaderValue;
 
     let version = env!("CARGO_PKG_VERSION");
     let url = match requested_code {
@@ -522,14 +500,9 @@ async fn connect_host_signal(
         }
         None => format!("{backend_ws_base}/v1/host-signal?client_version={version}"),
     };
-    let mut request = url
+    let request = url
         .into_client_request()
         .map_err(|e| anyhow::anyhow!("backend接続URLの構築に失敗: {e}"))?;
-    if !host_token.is_empty() {
-        let value = HeaderValue::from_str(host_token)
-            .map_err(|e| anyhow::anyhow!("--host-tokenに使えない文字が含まれています: {e}"))?;
-        request.headers_mut().insert("x-framewire-host-token", value);
-    }
     let (ws_stream, _resp) = tokio_tungstenite::connect_async(request)
         .await
         .map_err(|e| anyhow::anyhow!("backendへの接続に失敗: {e}"))?;
@@ -549,9 +522,6 @@ async fn connect_host_signal(
         HostInbound::RoomCreated { room_code } => room_code,
         HostInbound::VersionRejected { min_version } => {
             return Err(anyhow::Error::new(VersionRejected { min_version }));
-        }
-        HostInbound::Unauthorized => {
-            return Err(anyhow::Error::new(Unauthorized));
         }
         _ => anyhow::bail!("backendからの初回応答がroom_createdではありません: {text}"),
     };
@@ -591,9 +561,6 @@ async fn handle_signal_message(state: &Arc<AppState>, outbound: &OutboundHandle,
                 "[transport] unexpected version_rejected on an established connection (min_version={min_version})"
             );
         }
-        HostInbound::Unauthorized => {
-            eprintln!("[transport] unexpected unauthorized on an established connection");
-        }
         HostInbound::Offer { viewer_id, sdp } => {
             let offer = match RTCSessionDescription::offer(sdp) {
                 Ok(o) => o,
@@ -624,15 +591,10 @@ async fn handle_signal_message(state: &Arc<AppState>, outbound: &OutboundHandle,
     }
 }
 
-async fn reconnect_loop(
-    backend_ws_base: &str,
-    room_code: String,
-    state: &Arc<AppState>,
-    host_token: &str,
-) {
+async fn reconnect_loop(backend_ws_base: &str, room_code: String, state: &Arc<AppState>) {
     let mut backoff = Duration::from_secs(2);
     loop {
-        match connect_host_signal(backend_ws_base, Some(&room_code), host_token).await {
+        match connect_host_signal(backend_ws_base, Some(&room_code)).await {
             Ok((confirmed_code, outbound, ws_rx)) => {
                 if confirmed_code != room_code {
                     eprintln!(
@@ -644,10 +606,7 @@ async fn reconnect_loop(
                 run_signal_connection(state, ws_rx, outbound).await;
                 println!("[transport] signaling connection to backend dropped, reconnecting...");
             }
-            Err(e)
-                if e.downcast_ref::<VersionRejected>().is_some()
-                    || e.downcast_ref::<Unauthorized>().is_some() =>
-            {
+            Err(e) if e.downcast_ref::<VersionRejected>().is_some() => {
                 eprintln!("[transport] {e}; giving up (no point retrying)");
                 return;
             }

@@ -16,7 +16,6 @@ services:
     # override in server/.env only if you want to point at a different one.
     environment:
       - FW_STUN_SERVER
-      - FW_HOST_TOKEN
       - FW_MIN_HOST_VERSION
     networks:
       - gateway-net

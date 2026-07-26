@@ -116,7 +116,6 @@ struct StartSettingsDto {
     bitrate_mbps: u32,
     use_mesh: bool,
     public_host: String,
-    host_token: String,
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -210,7 +209,6 @@ fn start_streaming(
         SfuMode::Direct
     };
     args.public_host = settings.public_host;
-    args.host_token = settings.host_token;
 
     *s.status.lock().unwrap() = HostStatus::default();
     s.stop.store(false, Ordering::SeqCst);

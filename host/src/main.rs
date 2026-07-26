@@ -60,11 +60,6 @@ pub struct Args {
     /// STUN server (`host:port`) used for ICE candidate gathering. There is
     /// no TURN fallback: a peer that can't connect via P2P simply fails.
     stun_server: String,
-    /// Shared secret sent to the backend as `x-framewire-host-token`, so
-    /// only this host can connect and create a room (see `FW_HOST_TOKEN`
-    /// on the backend). Empty sends no header, which only works if the
-    /// backend has no token configured.
-    host_token: String,
 }
 
 impl Clone for Args {
@@ -82,7 +77,6 @@ impl Clone for Args {
             public_host: self.public_host.clone(),
             headless: self.headless,
             stun_server: self.stun_server.clone(),
-            host_token: self.host_token.clone(),
         }
     }
 }
@@ -108,7 +102,6 @@ fn parse_args() -> Args {
     let mut public_host = "127.0.0.1".to_string();
     let mut headless = false;
     let mut stun_server = "stun.l.google.com:19302".to_string();
-    let mut host_token = String::new();
 
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
@@ -151,7 +144,6 @@ fn parse_args() -> Args {
             "--public-host" => public_host = it.next().unwrap_or(public_host),
             "--headless" => headless = true,
             "--stun-server" => stun_server = it.next().unwrap_or(stun_server),
-            "--host-token" => host_token = it.next().unwrap_or(host_token),
             other => eprintln!("warning: ignoring unknown argument '{other}'"),
         }
     }
@@ -169,7 +161,6 @@ fn parse_args() -> Args {
         public_host,
         headless,
         stun_server,
-        host_token,
     }
 }
 
@@ -231,13 +222,9 @@ pub async fn run_pipeline(
         }
         SfuMode::Mesh => {
             let backend_ws_base = http_url_to_ws(&args.backend_url);
-            let (sender, room_code) = transport::start_mesh_publisher(
-                backend_ws_base,
-                ice_servers,
-                args.bitrate_bps,
-                args.host_token.clone(),
-            )
-            .await?;
+            let (sender, room_code) =
+                transport::start_mesh_publisher(backend_ws_base, ice_servers, args.bitrate_bps)
+                    .await?;
 
             // The viewer page itself is served by the backend, so the host
             // never needs an inbound port and viewers only ever see the

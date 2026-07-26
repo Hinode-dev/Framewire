@@ -9,9 +9,7 @@
 //!   messages. Passing `?room_code=XXXXXX` reuses that code if it's free.
 //!   `?client_version=X.Y.Z` reports the host build's version; if it's below
 //!   `FW_MIN_HOST_VERSION` (or missing), the connection is rejected with a
-//!   `version_rejected` message before a room is created. If `FW_HOST_TOKEN`
-//!   is set, the `x-framewire-host-token` header must match it or the
-//!   connection is rejected with `unauthorized`.
+//!   `version_rejected` message before a room is created.
 //! - `GET /v1/rooms/{room_code}/viewer-signal` (WebSocket): a viewer's
 //!   browser connects here, sends an offer, and receives the matching
 //!   answer. Repeated wrong room codes are throttled globally (see
@@ -32,7 +30,6 @@ use std::time::Duration;
 
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
 use axum::extract::{Path, Query, State};
-use axum::http::HeaderMap;
 use axum::response::{Html, IntoResponse, Json};
 use axum::routing::get;
 use axum::Router;
@@ -90,14 +87,9 @@ async fn host_signal(
     ws: WebSocketUpgrade,
     State(state): State<Arc<AppState>>,
     Query(query): Query<HostSignalQuery>,
-    headers: HeaderMap,
 ) -> impl IntoResponse {
-    let token = headers
-        .get("x-framewire-host-token")
-        .and_then(|v| v.to_str().ok())
-        .map(str::to_owned);
     ws.on_upgrade(move |socket| {
-        handle_host_socket(socket, state, query.room_code, query.client_version, token)
+        handle_host_socket(socket, state, query.room_code, query.client_version)
     })
 }
 
@@ -115,18 +107,8 @@ async fn handle_host_socket(
     state: Arc<AppState>,
     requested_code: Option<String>,
     client_version: Option<String>,
-    host_token: Option<String>,
 ) {
     let (mut ws_tx, mut ws_rx) = socket.split();
-
-    if let Some(expected) = &state.config.host_token {
-        if host_token.as_deref() != Some(expected.as_str()) {
-            println!("[backend] rejected host: bad or missing host token, no room created");
-            let msg = json!({"type": "unauthorized"}).to_string();
-            let _ = ws_tx.send(Message::Text(msg.into())).await;
-            return;
-        }
-    }
 
     if let Some(min_version) = &state.config.min_host_version {
         let accepted = client_version
