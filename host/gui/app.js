@@ -12,7 +12,8 @@ const refreshWindowsButton = document.getElementById('refresh-windows');
 const fpsSelect = document.getElementById('fps-select');
 const bitrateSlider = document.getElementById('bitrate-slider');
 const publicHostInput = document.getElementById('public-host-input');
-const settingsCard = document.getElementById('settings-card');
+const lockedSettings = document.getElementById('locked-settings');
+const switchHint = document.getElementById('switch-hint');
 const startStopButton = document.getElementById('start-stop-button');
 
 const statusBlock = document.getElementById('status-block');
@@ -51,6 +52,7 @@ captureModeToggle.addEventListener('click', (e) => {
   const isWindow = button.dataset.value === 'window';
   monitorRow.style.display = isWindow ? 'none' : '';
   windowRow.style.display = isWindow ? '' : 'none';
+  maybeSwitchTarget();
 });
 
 streamingModeToggle.addEventListener('click', (e) => {
@@ -89,6 +91,7 @@ function renderMonitorGrid() {
     card.addEventListener('click', () => {
       selectedMonitorIndex = i;
       highlightSelected(monitorCards, selectedMonitorIndex);
+      maybeSwitchTarget();
     });
     monitorGrid.appendChild(card);
     invoke('capture_monitor_thumbnail', { adapterIndex: t.adapterIndex, outputIndex: t.outputIndex })
@@ -109,6 +112,7 @@ function renderWindowGrid() {
     card.addEventListener('click', () => {
       selectedWindowIndex = i;
       highlightSelected(windowCards, selectedWindowIndex);
+      maybeSwitchTarget();
     });
     windowGrid.appendChild(card);
     invoke('capture_window_thumbnail', { hwnd: w.hwnd })
@@ -173,6 +177,27 @@ function currentSettings() {
   };
 }
 
+// Capture-target changes (monitor/window picker, capture-mode toggle) apply
+// immediately while streaming, instead of only taking effect on the next
+// Start — the room code and viewer connections are untouched.
+async function maybeSwitchTarget() {
+  if (!running) return;
+  const settings = currentSettings();
+  try {
+    await invoke('switch_capture_target', {
+      target: {
+        captureMode: settings.captureMode,
+        adapterIndex: settings.adapterIndex,
+        outputIndex: settings.outputIndex,
+        windowHwnd: settings.windowHwnd,
+      },
+    });
+  } catch (e) {
+    errorTextEl.textContent = `Error: ${e}`;
+    errorTextEl.style.display = '';
+  }
+}
+
 startStopButton.addEventListener('click', async () => {
   if (running) {
     await invoke('stop_streaming');
@@ -195,7 +220,8 @@ document.getElementById('copy-watch-url').addEventListener('click', () => {
 
 function applyStatus(status) {
   running = status.running;
-  settingsCard.classList.toggle('disabled', running);
+  lockedSettings.classList.toggle('disabled', running);
+  switchHint.style.display = running ? '' : 'none';
   startStopButton.textContent = running ? 'Stop Streaming' : 'Start Streaming';
   startStopButton.classList.toggle('stop', running);
 

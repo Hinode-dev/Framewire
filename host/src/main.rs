@@ -196,12 +196,18 @@ fn main() -> anyhow::Result<()> {
     if force_headless {
         let status: SharedStatus = Arc::new(Mutex::new(HostStatus::default()));
         let stop = Arc::new(AtomicBool::new(false));
+        let switch_target: PendingSwitch = Arc::new(Mutex::new(None));
         let rt = tokio::runtime::Runtime::new()?;
-        return rt.block_on(run_pipeline(args, status, stop));
+        return rt.block_on(run_pipeline(args, status, stop, switch_target));
     }
 
     tauri_app::run(args)
 }
+
+/// Set by the GUI's `switch_capture_target` command to request a live
+/// capture-target change without tearing down the room/WebRTC connections.
+/// Checked once per capture-loop iteration and cleared once applied.
+pub type PendingSwitch = Arc<Mutex<Option<capture::CaptureSource>>>;
 
 /// Runs the full capture -> encode -> send pipeline until `stop` is set or
 /// the sender exits. Called from both the headless CLI path and the GUI's
@@ -210,6 +216,7 @@ pub async fn run_pipeline(
     args: Args,
     status: SharedStatus,
     stop: Arc<AtomicBool>,
+    switch_target: PendingSwitch,
 ) -> anyhow::Result<()> {
     let ice_servers = transport::build_ice_servers(&args.stun_server);
 
@@ -270,7 +277,7 @@ pub async fn run_pipeline(
 
     let status_for_loop = status.clone();
     let capture_task = tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-        run_capture_loop(&args, frame_sender, tx, status_for_loop, stop)
+        run_capture_loop(&args, frame_sender, tx, status_for_loop, stop, switch_target)
     });
 
     let result = capture_task.await?;
@@ -284,12 +291,41 @@ pub async fn run_pipeline(
     result
 }
 
+/// Builds the capture -> color-convert -> NVENC encoder stack for one
+/// capture source. Used both for the initial setup and every live target
+/// switch requested through `switch_capture_target`.
+fn build_capture_stack(
+    source: capture::CaptureSource,
+    backend: capture::Backend,
+    fps: u32,
+    bitrate_bps: u32,
+) -> anyhow::Result<(
+    Box<dyn capture::ScreenCapture>,
+    shaders::ColorConverter,
+    encode::NvencEncoder,
+)> {
+    let cap = capture::start_capture(source, backend)?;
+    println!("[capture] capturing at {}x{}", cap.width(), cap.height());
+    let converter = shaders::ColorConverter::new(cap.device(), cap.width(), cap.height())?;
+    let encoder = encode::NvencEncoder::new(
+        cap.device(),
+        converter.nv12_texture(),
+        cap.width(),
+        cap.height(),
+        fps,
+        bitrate_bps,
+    )?;
+    println!("[encode] NVENC (H.264, D3D11 zero-copy) initialized");
+    Ok((cap, converter, encoder))
+}
+
 fn run_capture_loop(
     args: &Args,
     frame_sender: transport::FrameSender,
     tx: tokio::sync::mpsc::Sender<(Vec<u8>, Duration)>,
     status: SharedStatus,
     stop: Arc<AtomicBool>,
+    switch_target: PendingSwitch,
 ) -> anyhow::Result<()> {
     let source = match args.window_hwnd {
         Some(hwnd) => capture::CaptureSource::Window { hwnd },
@@ -298,15 +334,13 @@ fn run_capture_loop(
             output_index: args.output_index,
         },
     };
-    let mut cap = capture::start_capture(source, args.capture_backend)?;
-    println!("[capture] capturing at {}x{}", cap.width(), cap.height());
+    let (mut cap, mut converter, mut encoder) =
+        build_capture_stack(source, args.capture_backend, args.fps, args.bitrate_bps)?;
     {
         let mut s = status.lock().unwrap();
         s.width = cap.width();
         s.height = cap.height();
     }
-
-    let converter = shaders::ColorConverter::new(cap.device(), cap.width(), cap.height())?;
 
     if std::env::var("FW_DEBUG_DUMP").is_ok() {
         if let CaptureFrame::Frame(tex) = cap.next_frame(200)? {
@@ -322,16 +356,6 @@ fn run_capture_loop(
         }
         return Ok(());
     }
-
-    let mut encoder = encode::NvencEncoder::new(
-        cap.device(),
-        converter.nv12_texture(),
-        cap.width(),
-        cap.height(),
-        args.fps,
-        args.bitrate_bps,
-    )?;
-    println!("[encode] NVENC (H.264, D3D11 zero-copy) initialized");
 
     let frame_duration = Duration::from_secs_f64(1.0 / args.fps as f64);
     let mut frame_count: u64 = 0;
@@ -363,6 +387,34 @@ fn run_capture_loop(
         if stop.load(Ordering::SeqCst) {
             println!("[capture] stop requested, ending stream");
             return Ok(());
+        }
+
+        if let Some(new_source) = switch_target.lock().unwrap().take() {
+            match build_capture_stack(new_source, args.capture_backend, args.fps, current_bitrate_bps) {
+                Ok((new_cap, new_converter, new_encoder)) => {
+                    cap = new_cap;
+                    converter = new_converter;
+                    encoder = new_encoder;
+                    if let Ok(mut s) = status.lock() {
+                        s.width = cap.width();
+                        s.height = cap.height();
+                    }
+                    // Forces an IDR on the next frame (see the force_idr
+                    // check below) since the new encoder starts a fresh
+                    // reference chain.
+                    frame_count = 0;
+                    next_due = std::time::Instant::now();
+                    need_idr_after_skip = false;
+                    println!(
+                        "[capture] switched capture target ({}x{})",
+                        cap.width(),
+                        cap.height()
+                    );
+                }
+                Err(e) => {
+                    eprintln!("[capture] failed to switch capture target: {e:#} (keeping current target)");
+                }
+            }
         }
 
         let t_wait_start = std::time::Instant::now();

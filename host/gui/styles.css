@@ -106,12 +106,14 @@ body {
   padding: var(--space-lg);
   margin-top: var(--space-xl);
   box-shadow: none;
-  transition: opacity 0.15s ease;
 }
 
-.card.disabled {
+/* Applied to #locked-settings (not the whole card) while streaming — the
+   capture-target picker stays interactive so it can be changed live. */
+.disabled {
   opacity: 0.55;
   pointer-events: none;
+  transition: opacity 0.15s ease;
 }
 
 .row {

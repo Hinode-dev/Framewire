@@ -16,7 +16,7 @@ use base64::Engine;
 use serde::{Deserialize, Serialize};
 use tauri::{Emitter, Manager};
 
-use crate::{capture, run_pipeline, Args, HostStatus, SfuMode, SharedStatus};
+use crate::{capture, run_pipeline, Args, HostStatus, PendingSwitch, SfuMode, SharedStatus};
 
 /// Thumbnails are for a small picker card, not full quality — bound the
 /// longer side so capture + base64 + IPC stay cheap.
@@ -33,6 +33,9 @@ struct AppState {
     base_args: Args,
     status: SharedStatus,
     stop: Arc<AtomicBool>,
+    /// Set by `switch_capture_target` to change the capture target of an
+    /// already-running stream without restarting the room/WebRTC session.
+    switch_target: PendingSwitch,
     worker: Option<std::thread::JoinHandle<()>>,
     /// When streaming started; used to exclude the initial warm-up period
     /// from the capture-failure warning check.
@@ -45,6 +48,7 @@ impl AppState {
             base_args,
             status: Arc::new(Mutex::new(HostStatus::default())),
             stop: Arc::new(AtomicBool::new(false)),
+            switch_target: Arc::new(Mutex::new(None)),
             worker: None,
             running_since: None,
         }
@@ -116,6 +120,16 @@ struct StartSettingsDto {
     bitrate_mbps: u32,
     use_mesh: bool,
     public_host: String,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct SwitchTargetDto {
+    /// "monitor" or "window".
+    capture_mode: String,
+    adapter_index: u32,
+    output_index: u32,
+    window_hwnd: Option<String>,
 }
 
 #[derive(Serialize, Clone, Default)]
@@ -212,9 +226,11 @@ fn start_streaming(
 
     *s.status.lock().unwrap() = HostStatus::default();
     s.stop.store(false, Ordering::SeqCst);
+    *s.switch_target.lock().unwrap() = None;
 
     let status = s.status.clone();
     let stop = s.stop.clone();
+    let switch_target = s.switch_target.clone();
     s.worker = Some(std::thread::spawn(move || {
         let rt = match tokio::runtime::Runtime::new() {
             Ok(rt) => rt,
@@ -225,7 +241,7 @@ fn start_streaming(
                 return;
             }
         };
-        if let Err(e) = rt.block_on(run_pipeline(args, status.clone(), stop)) {
+        if let Err(e) = rt.block_on(run_pipeline(args, status.clone(), stop, switch_target)) {
             if let Ok(mut st) = status.lock() {
                 st.error = Some(e.to_string());
                 st.running = false;
@@ -247,6 +263,38 @@ fn stop_streaming(state: tauri::State<'_, Mutex<AppState>>) -> Result<(), String
     if let Ok(mut st) = s.status.lock() {
         st.running = false;
     }
+    Ok(())
+}
+
+/// Changes the capture target of an already-running stream in place — the
+/// room code, viewer connections, and WebRTC session are untouched; only
+/// the capture -> encode stack is torn down and rebuilt against the new
+/// source (see `build_capture_stack` in `main.rs`).
+#[tauri::command]
+fn switch_capture_target(
+    state: tauri::State<'_, Mutex<AppState>>,
+    target: SwitchTargetDto,
+) -> Result<(), String> {
+    let s = state.lock().unwrap();
+    if !s.is_running() {
+        return Err("not currently streaming".to_string());
+    }
+
+    let source = if target.capture_mode == "window" {
+        let hwnd: isize = target
+            .window_hwnd
+            .as_deref()
+            .ok_or("no window selected")?
+            .parse()
+            .map_err(|_| "invalid window handle".to_string())?;
+        capture::CaptureSource::Window { hwnd }
+    } else {
+        capture::CaptureSource::Monitor {
+            adapter_index: target.adapter_index,
+            output_index: target.output_index,
+        }
+    };
+    *s.switch_target.lock().unwrap() = Some(source);
     Ok(())
 }
 
@@ -308,6 +356,7 @@ pub fn run(args: Args) -> anyhow::Result<()> {
             get_defaults,
             start_streaming,
             stop_streaming,
+            switch_capture_target,
             copy_to_clipboard,
         ])
         .setup(|app| {
