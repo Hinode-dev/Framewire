@@ -43,6 +43,8 @@ The primary use case: playing a competitive/co-op FPS while showing 4-5 friends 
 | Viewer | Latest Chrome / Edge with hardware decode enabled |
 | Signaling server | A small Linux VPS |
 
+There is no TURN relay — video always flows directly (P2P) between the host and each viewer. A viewer on the **same network** as the host always works. A viewer on a **different network** only works if the host's router supports UPnP (Framewire attempts automatic port mapping on startup); if the router doesn't support/allow UPnP, or there's carrier-grade NAT upstream, that viewer can't connect.
+
 ## Status / Roadmap
 
 This is a personal MVP and **not yet production-ready**.
