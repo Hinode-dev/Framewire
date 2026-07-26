@@ -1,0 +1,289 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Framewire</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; font-family: system-ui, sans-serif; }
+  #video-container { width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; }
+  video { width: 100%; height: 100%; object-fit: contain; background: #000; }
+
+  #stats {
+    position: fixed; top: 8px; left: 8px; color: #eee; background: rgba(0,0,0,0.55);
+    font-family: ui-monospace, monospace; font-size: 13px; padding: 8px 10px; border-radius: 6px;
+    white-space: pre; line-height: 1.5; pointer-events: none;
+  }
+  #hint {
+    position: fixed; bottom: 8px; left: 8px; color: #aaa; background: rgba(0,0,0,0.4);
+    font-family: ui-monospace, monospace; font-size: 11px; padding: 4px 8px; border-radius: 4px;
+  }
+  #center-msg {
+    position: fixed; inset: 0; display: flex; align-items: center; justify-content: center;
+    flex-direction: column; gap: 12px; color: #ccc; text-align: center; padding: 24px;
+  }
+  #center-msg .code { font-size: 32px; letter-spacing: 4px; font-weight: 700; color: #fff; font-family: ui-monospace, monospace; }
+  #center-msg.hidden { display: none; }
+  .spinner {
+    width: 28px; height: 28px; border: 3px solid #444; border-top-color: #fff;
+    border-radius: 50%; animation: spin 0.9s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+</style>
+</head>
+<body>
+  <div id="video-container"></div>
+  <div id="stats" style="display:none"></div>
+  <div id="center-msg">
+    <div class="spinner"></div>
+    <div id="center-text">接続中...</div>
+  </div>
+  <div id="hint">S: 統計 / F: フルスクリーン</div>
+
+<script type="module">
+// P2P mesh viewer: connects directly to the streaming host with a plain
+// RTCPeerConnection and WebSocket signaling (no SFU client SDK). The
+// backend only relays offer/answer messages and distributes STUN config;
+// it never sees the media itself. There is no TURN fallback.
+
+const container = document.getElementById('video-container');
+const statsEl = document.getElementById('stats');
+const centerMsg = document.getElementById('center-msg');
+const centerText = document.getElementById('center-text');
+let statsVisible = false;
+
+// Read the room code from the end of the URL path (/watch/{room_code}).
+const roomCode = location.pathname.split('/').filter(Boolean).pop() || '-';
+
+const stats = { fps: 0, resolution: '-', bitrateKbps: 0, rttMs: 0, lossPct: 0 };
+
+function renderStats() {
+  statsEl.style.display = statsVisible ? 'block' : 'none';
+  statsEl.textContent =
+    `Framewire  [room ${roomCode}]\n` +
+    `fps         : ${stats.fps.toFixed(1)}\n` +
+    `解像度      : ${stats.resolution}\n` +
+    `ビットレート: ${stats.bitrateKbps.toFixed(0)} kbps\n` +
+    `RTT         : ${stats.rttMs.toFixed(0)} ms\n` +
+    `パケットロス: ${stats.lossPct.toFixed(2)} %`;
+}
+
+function showCenter(text, showCode) {
+  centerMsg.classList.remove('hidden');
+  centerText.innerHTML = (showCode ? `<div class="code">${roomCode}</div>` : '') + text;
+}
+function hideCenter() { centerMsg.classList.add('hidden'); }
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 's' || e.key === 'S') { statsVisible = !statsVisible; renderStats(); }
+  else if (e.key === 'f' || e.key === 'F') {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else document.documentElement.requestFullscreen();
+  }
+});
+
+// Waits until pc.localDescription includes all ICE candidates (no trickle
+// ICE; a single offer/answer round trip is enough). The host's webrtc-rs
+// side does the same thing via gathering_complete_promise.
+function waitIceGatheringComplete(pc) {
+  if (pc.iceGatheringState === 'complete') return Promise.resolve();
+  return new Promise((resolve) => {
+    function check() {
+      if (pc.iceGatheringState === 'complete') {
+        pc.removeEventListener('icegatheringstatechange', check);
+        resolve();
+      }
+    }
+    pc.addEventListener('icegatheringstatechange', check);
+  });
+}
+
+function waitSocketOpen(ws) {
+  return new Promise((resolve, reject) => {
+    ws.addEventListener('open', () => resolve(), { once: true });
+    ws.addEventListener('error', (e) => reject(e), { once: true });
+  });
+}
+
+// The backend can send a message and close the socket right after connect
+// (e.g. room not found). Attaching listeners only right before use (e.g.
+// after sending the offer) would miss events that arrived earlier and
+// hang forever. Attach listeners immediately on connect instead and queue
+// whatever arrives.
+function createSignalQueue(ws) {
+  const pending = [];
+  const waiters = [];
+  let closedError = null;
+
+  function push(data, err) {
+    if (waiters.length > 0) {
+      waiters.shift()(data, err);
+    } else {
+      pending.push({ data, err });
+    }
+  }
+
+  ws.addEventListener('message', (e) => push(JSON.parse(e.data), null));
+  ws.addEventListener('close', () => {
+    closedError = new Error('シグナリング接続が閉じました');
+    push(null, closedError);
+  });
+
+  return {
+    next() {
+      if (pending.length > 0) {
+        const { data, err } = pending.shift();
+        return err ? Promise.reject(err) : Promise.resolve(data);
+      }
+      if (closedError) return Promise.reject(closedError);
+      return new Promise((resolve, reject) => {
+        waiters.push((data, err) => (err ? reject(err) : resolve(data)));
+      });
+    },
+  };
+}
+
+// Establishes one connection and throws once it's disconnected; the
+// caller's main() loops this to reconnect automatically.
+async function connectOnce(onConnected) {
+  if (roomCode === '-') throw new Error('URLにルームコードがありません');
+
+  showCenter('配信の開始を待っています...', true);
+
+  // No TURN fallback: only the STUN server the backend distributes.
+  let iceServers = [];
+  try {
+    const cfg = await fetch('/ice-config').then((r) => r.json());
+    iceServers = cfg.iceServers ?? [];
+  } catch (e) {
+    console.warn('ICE設定の取得に失敗（STUNなしで続行）', e);
+  }
+
+  const wsProtocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const ws = new WebSocket(`${wsProtocol}//${location.host}/v1/rooms/${roomCode}/viewer-signal`);
+  const signalQueue = createSignalQueue(ws); // openより前に張る（取りこぼし防止）
+  await waitSocketOpen(ws);
+
+  const pc = new RTCPeerConnection({ iceServers });
+  let remoteStream = null;
+
+  pc.ontrack = (event) => {
+    remoteStream = event.streams[0] ?? new MediaStream([event.track]);
+    const el = document.createElement('video');
+    el.autoplay = true;
+    el.playsInline = true;
+    // No audio track, but the browser's autoplay policy can still block
+    // playback (and leave the screen black despite srcObject being set)
+    // unless the element is muted.
+    el.muted = true;
+    el.srcObject = remoteStream;
+    container.innerHTML = '';
+    container.appendChild(el);
+
+    const tryPlay = () => el.play().then(() => true).catch(() => false);
+
+    tryPlay().then((ok) => {
+      if (ok) {
+        hideCenter();
+        return;
+      }
+      // Autoplay got blocked (can happen even when muted, depending on
+      // browser/OS settings). Any user interaction re-allows playback, so
+      // prompt for a click and retry.
+      console.warn('[framewire] 自動再生がブロックされました。クリックで再生します');
+      showCenter('クリックして再生してください', false);
+      const onClick = () => {
+        tryPlay().then((ok2) => {
+          if (ok2) {
+            hideCenter();
+            document.removeEventListener('click', onClick);
+          }
+        });
+      };
+      document.addEventListener('click', onClick);
+    });
+  };
+
+  let disconnected = false;
+  const disconnectPromise = new Promise((resolve) => {
+    pc.addEventListener('connectionstatechange', () => {
+      if (['disconnected', 'failed', 'closed'].includes(pc.connectionState) && !disconnected) {
+        disconnected = true;
+        resolve();
+      }
+    });
+  });
+
+  pc.addTransceiver('video', { direction: 'recvonly' });
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await waitIceGatheringComplete(pc);
+
+  ws.send(JSON.stringify({ type: 'offer', sdp: pc.localDescription.sdp }));
+
+  const answerMsg = await signalQueue.next();
+  if (answerMsg.type === 'error') {
+    throw new Error(answerMsg.message ?? '配信ホストからエラーが返されました');
+  }
+  if (answerMsg.type !== 'answer') {
+    throw new Error(`想定外のシグナリングメッセージ: ${answerMsg.type}`);
+  }
+  await pc.setRemoteDescription({ type: 'answer', sdp: answerMsg.sdp });
+
+  onConnected();
+
+  let lastBytes = 0, lastTime = performance.now();
+  const statsInterval = setInterval(async () => {
+    const now = performance.now();
+    const elapsed = (now - lastTime) / 1000;
+    lastTime = now;
+    const report = await pc.getStats().catch(() => null);
+    if (!report) return;
+    report.forEach((r) => {
+      if (r.type === 'inbound-rtp' && r.kind === 'video') {
+        stats.fps = r.framesPerSecond ?? stats.fps;
+        if (r.frameWidth && r.frameHeight) stats.resolution = `${r.frameWidth}x${r.frameHeight}`;
+        const bytes = r.bytesReceived ?? lastBytes;
+        if (elapsed > 0) stats.bitrateKbps = ((bytes - lastBytes) * 8) / 1000 / elapsed;
+        lastBytes = bytes;
+        const lost = r.packetsLost ?? 0, recv = r.packetsReceived ?? 0;
+        stats.lossPct = (lost + recv) > 0 ? (lost / (lost + recv)) * 100 : 0;
+      }
+      if (r.type === 'candidate-pair' && r.nominated && r.currentRoundTripTime != null) {
+        stats.rttMs = r.currentRoundTripTime * 1000;
+      }
+    });
+    renderStats();
+  }, 1000);
+
+  try {
+    await disconnectPromise;
+  } finally {
+    clearInterval(statsInterval);
+    ws.close();
+    pc.close();
+  }
+  throw new Error('配信ホストとの接続が切断されました');
+}
+
+async function main() {
+  let backoffMs = 1000;
+  while (true) {
+    try {
+      await connectOnce(() => { backoffMs = 1000; });
+    } catch (e) {
+      showCenter('再接続待機中...', true);
+      console.warn('[framewire] 接続に失敗、再接続します', e);
+    }
+    await new Promise((r) => setTimeout(r, backoffMs));
+    backoffMs = Math.min(backoffMs * 2, 15000);
+  }
+}
+
+main();
+renderStats();
+</script>
+</body>
+</html>

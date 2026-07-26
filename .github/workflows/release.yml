@@ -1,0 +1,81 @@
+name: Release host
+
+# Builds framewire.exe, attaches it to a GitHub Release, and publishes the
+# download site whenever a "vX.Y.Z" tag is pushed.
+#
+# The build itself runs on a self-hosted runner: the nvidia-video-codec-sdk
+# crate's build.rs needs the NVIDIA Video Codec SDK's nvEncodeAPI.lib /
+# nvcuvid.lib, which aren't available on GitHub-hosted Windows runners and
+# require a NVIDIA developer account to download. The self-hosted runner is
+# expected to already have Rust, the MSVC toolchain, and
+# NVIDIA_VIDEO_CODEC_SDK_PATH configured (see host/.cargo/config.toml.example).
+#
+# The site deploy runs on a GitHub-hosted runner instead — it's just copying
+# the already-built exe into `site/` and publishing to Pages, so there's no
+# reason to put that load on the self-hosted machine.
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build-and-release:
+    runs-on: self-hosted
+    defaults:
+      run:
+        working-directory: ./host
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build framewire.exe (release)
+        run: cargo build --release --verbose
+
+      - name: Attach exe to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: host/target/release/framewire.exe
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload exe for the site-deploy job
+        uses: actions/upload-artifact@v4
+        with:
+          name: framewire-exe
+          path: host/target/release/framewire.exe
+          retention-days: 1
+
+  deploy-site:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download built exe
+        uses: actions/download-artifact@v4
+        with:
+          name: framewire-exe
+          path: site/download
+
+      - name: Record release version
+        run: echo "${{ github.ref_name }}" > site/download/version.txt
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

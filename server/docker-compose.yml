@@ -1,0 +1,22 @@
+# backend (signaling) is the only always-on piece; media (RTP) flows
+# peer-to-peer between host and viewers and never touches this server.
+# There is no TURN relay: a peer that can't connect via P2P (symmetric NAT,
+# strict firewall) simply fails to connect, instead of falling back through
+# a relay hosted here. backend is reverse-proxied by a shared Caddy gateway
+# over the external gateway-net network.
+services:
+  backend:
+    build:
+      context: ../backend
+    container_name: framewire-backend
+    restart: unless-stopped
+    # No published ports: only reachable through the gateway-net reverse
+    # proxy (see the shared gateway's Caddyfile for the public hostname).
+    # FW_STUN_SERVER defaults to a public STUN server (see backend/src/config.rs);
+    # override in server/.env only if you want to point at a different one.
+    networks:
+      - gateway-net
+
+networks:
+  gateway-net:
+    external: true

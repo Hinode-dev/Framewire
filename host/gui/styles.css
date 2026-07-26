@@ -1,0 +1,364 @@
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-Light.woff2') format('woff2');
+  font-weight: 300;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Inter';
+  src: url('fonts/Inter-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --color-canvas-dark: #000000;
+  --color-on-dark: #ffffff;
+  --color-on-dark-mute: #cccccc;
+  --color-surface-dark-card: #181818;
+  --color-surface-dark-elevated: #121314;
+  --color-hairline-dark: rgba(229, 229, 229, 0.2);
+  --color-primary: #0070d1;
+  --color-primary-pressed: #0064b7;
+  --color-warning: #c81b3a;
+
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-full: 9999px;
+
+  --space-xxs: 4px;
+  --space-xs: 8px;
+  --space-sm: 12px;
+  --space-md: 16px;
+  --space-lg: 20px;
+  --space-xl: 28px;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* Same quiet hairline scrollbar everywhere, not just .thumb-grid — in case
+   the window content ever needs to scroll vertically too. */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--color-hairline-dark);
+  border-radius: var(--radius-full);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-on-dark-mute);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
+body {
+  margin: 0;
+  background: var(--color-canvas-dark);
+  color: var(--color-on-dark);
+  font-family: 'Inter', 'Segoe UI', Arial, sans-serif;
+  font-size: 14px;
+  -webkit-font-smoothing: antialiased;
+  user-select: none;
+}
+
+.app {
+  padding: var(--space-lg);
+  display: flex;
+  flex-direction: column;
+}
+
+.heading {
+  font-size: 28px;
+  font-weight: 300;
+  letter-spacing: 0.1px;
+  margin: 0;
+}
+
+.subheading {
+  font-size: 13px;
+  color: var(--color-on-dark-mute);
+  margin: 2px 0 0;
+}
+
+.card {
+  background: var(--color-surface-dark-card);
+  border-radius: var(--radius-md);
+  padding: var(--space-lg);
+  margin-top: var(--space-xl);
+  box-shadow: none;
+  transition: opacity 0.15s ease;
+}
+
+.card.disabled {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: 140px 1fr;
+  align-items: center;
+  gap: var(--space-md);
+  margin-bottom: var(--space-md);
+}
+
+.row.row-top {
+  align-items: start;
+  padding-top: 2px;
+}
+
+/* Grid items default to min-width:auto, which lets them grow past their
+   1fr track to fit content instead of respecting it — that's what let the
+   thumbnail grid overflow the window instead of scrolling. */
+.row-top > * {
+  min-width: 0;
+}
+
+.row:last-child {
+  margin-bottom: 0;
+}
+
+label {
+  color: var(--color-on-dark-mute);
+  font-size: 13px;
+}
+
+select,
+input[type='text'],
+input[type='password'] {
+  background: var(--color-surface-dark-elevated);
+  border: 1px solid var(--color-hairline-dark);
+  border-radius: var(--radius-sm);
+  color: var(--color-on-dark);
+  height: 36px;
+  padding: 0 var(--space-sm);
+  font-family: inherit;
+  font-size: 13px;
+  width: 100%;
+}
+
+select:focus,
+input:focus {
+  outline: none;
+  border: 2px solid var(--color-primary);
+}
+
+input[readonly] {
+  color: var(--color-on-dark-mute);
+  border-color: transparent;
+  background: transparent;
+  padding-left: 0;
+}
+
+.segmented {
+  display: inline-flex;
+  background: var(--color-surface-dark-elevated);
+  border-radius: var(--radius-full);
+  padding: 3px;
+  gap: 2px;
+}
+
+.segmented button {
+  border: none;
+  background: transparent;
+  color: var(--color-on-dark-mute);
+  border-radius: var(--radius-full);
+  padding: 6px 14px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.segmented button.active {
+  background: var(--color-primary);
+  color: var(--color-on-dark);
+}
+
+.thumb-grid {
+  display: flex;
+  gap: var(--space-xs);
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+/* WebView2's default scrollbar is the light OS chrome, which clashes with
+   the flat dark canvas — thin it down to a quiet hairline-colored bar. */
+.thumb-grid::-webkit-scrollbar {
+  height: 6px;
+}
+
+.thumb-grid::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.thumb-grid::-webkit-scrollbar-thumb {
+  background: var(--color-hairline-dark);
+  border-radius: var(--radius-full);
+}
+
+.thumb-grid::-webkit-scrollbar-thumb:hover {
+  background: var(--color-on-dark-mute);
+}
+
+.thumb-grid::-webkit-scrollbar-button {
+  display: none;
+}
+
+.thumb-card {
+  flex: 0 0 auto;
+  width: 96px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: 3px;
+  text-align: center;
+  background: none;
+}
+
+.thumb-card.selected {
+  border-color: var(--color-primary);
+}
+
+.thumb-image {
+  width: 90px;
+  height: 56px;
+  background: var(--color-surface-dark-elevated);
+  border-radius: var(--radius-sm);
+  /* Monitor thumbnails are 16:9 screenshots (fill the box); window
+     thumbnails are square app icons (letterboxed, not cropped). */
+  object-fit: contain;
+  display: block;
+}
+
+.thumb-label {
+  font-size: 10px;
+  color: var(--color-on-dark-mute);
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ghost-button {
+  background: transparent;
+  border: 1px solid var(--color-hairline-dark);
+  border-radius: var(--radius-sm);
+  color: var(--color-on-dark);
+  padding: 0 var(--space-sm);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.primary-button {
+  align-self: flex-start;
+  margin-top: var(--space-xl);
+  min-width: 180px;
+  height: 40px;
+  border: none;
+  border-radius: var(--radius-full);
+  background: var(--color-primary);
+  color: var(--color-on-dark);
+  font-family: inherit;
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.32px;
+  cursor: pointer;
+}
+
+.primary-button:active {
+  background: var(--color-primary-pressed);
+}
+
+.primary-button.stop {
+  background: transparent;
+  border: 1px solid var(--color-hairline-dark);
+}
+
+hr {
+  border: none;
+  border-top: 1px solid var(--color-hairline-dark);
+  margin: var(--space-xl) 0 var(--space-md);
+}
+
+.status {
+  display: none;
+  flex-direction: column;
+  gap: var(--space-xs);
+}
+
+.status.visible {
+  display: flex;
+}
+
+.status-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.room-badge {
+  display: inline-flex;
+  background: var(--color-primary);
+  border-radius: var(--radius-full);
+  padding: 4px 14px;
+  font-family: 'Consolas', monospace;
+  font-weight: 700;
+  font-size: 16px;
+  color: var(--color-on-dark);
+}
+
+.watch-url {
+  font-family: 'Consolas', monospace;
+  font-size: 12px;
+  color: var(--color-on-dark-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+
+.metrics {
+  font-family: 'Consolas', monospace;
+  color: var(--color-on-dark-mute);
+  font-size: 12px;
+}
+
+.idle-text {
+  color: var(--color-on-dark-mute);
+  font-size: 13px;
+}
+
+.idle-note {
+  color: var(--color-on-dark-mute);
+  font-size: 11px;
+  margin-top: var(--space-xs);
+}
+
+.warning-text,
+.error-text {
+  color: var(--color-warning);
+  font-size: 12px;
+  margin-top: var(--space-xs);
+}

@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Framewire — high-fps screen sharing for your squad</title>
+  <meta name="description" content="Framewire streams gameplay at 120fps+ with low latency to up to 5 friends at once. Viewers just open a URL in their browser." />
+  <link rel="icon" href="favicon.png" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="nav">
+    <span class="nav-logo">FRAMEWIRE</span>
+    <a class="nav-link" href="https://github.com/Hinode-dev/Framewire">GitHub</a>
+  </header>
+
+  <section class="hero">
+    <h1 class="hero-title">High-fps game screen<br />sharing for your squad</h1>
+    <p class="hero-sub">
+      Stream at 120fps+ with low latency to up to 5 friends at once. The streamer runs
+      one Windows app — viewers just open a URL in their browser. No install, no login.
+    </p>
+    <div class="hero-cta">
+      <a class="button-primary" id="download-button" href="https://github.com/Hinode-dev/Framewire/releases/latest">
+        Download for Windows
+      </a>
+      <span class="hero-meta" id="version-label"></span>
+    </div>
+    <p class="hero-note">Requires Windows 10/11 and an NVIDIA GTX 1060 or newer (NVENC).</p>
+  </section>
+
+  <section class="section-light">
+    <h2 class="section-title">Why Framewire</h2>
+    <div class="card-grid">
+      <div class="card">
+        <h3 class="card-title">Beyond Discord's 60fps cap</h3>
+        <p class="card-body">
+          Discord's screen share tops out at 60fps even on paid plans. Framewire streams
+          1440p/120fps or 1080p/144fps, so nothing gets lost for players on 144Hz/240Hz setups.
+        </p>
+      </div>
+      <div class="card">
+        <h3 class="card-title">Built for a small group</h3>
+        <p class="card-body">
+          Not 1-to-1 remote desktop, not a broadcast platform — up to 5 friends can watch
+          the same P2P stream at once, joining with a 6-character room code.
+        </p>
+      </div>
+      <div class="card">
+        <h3 class="card-title">Exclusive fullscreen, no compromise</h3>
+        <p class="card-body">
+          Streams straight out of exclusive fullscreen for competitive players who won't
+          switch to borderless, with a zero-copy GPU pipeline from capture to NVENC encode.
+        </p>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-dark">
+    <h2 class="section-title">Requirements</h2>
+    <table class="req-table">
+      <tbody>
+        <tr>
+          <td>Streaming host</td>
+          <td>Windows 10 (1903+) / 11, NVIDIA GTX 1060 or newer (NVENC required), upload bandwidth ≈ 25 Mbps × number of viewers</td>
+        </tr>
+        <tr>
+          <td>Viewer</td>
+          <td>Latest Chrome / Edge with hardware decode enabled — no install required</td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <footer class="footer">
+    <div class="footer-inner">
+      <span class="footer-brand">FRAMEWIRE</span>
+      <div class="footer-links">
+        <a href="https://github.com/Hinode-dev/Framewire">Source</a>
+        <a href="https://github.com/Hinode-dev/Framewire/releases">Releases</a>
+        <a href="https://github.com/Hinode-dev/Framewire/blob/main/LICENSE-MIT">License</a>
+      </div>
+    </div>
+    <p class="footer-fine">Personal, work-in-progress project. Not affiliated with Discord, NVIDIA, or Sony Interactive Entertainment.</p>
+  </footer>
+
+  <script src="app.js"></script>
+</body>
+</html>

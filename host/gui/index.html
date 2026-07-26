@@ -1,0 +1,99 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Framewire</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="app">
+    <h1 class="heading">FRAMEWIRE</h1>
+    <p class="subheading">Game screen sharing host</p>
+
+    <div class="card" id="settings-card">
+      <div class="row">
+        <label>Capture mode</label>
+        <div class="segmented" id="capture-mode-toggle">
+          <button type="button" data-value="monitor" class="active">Monitor</button>
+          <button type="button" data-value="window">Window</button>
+        </div>
+      </div>
+
+      <div class="row row-top" id="monitor-row">
+        <label>Capture target</label>
+        <div class="thumb-grid" id="monitor-grid"></div>
+      </div>
+
+      <div class="row row-top" id="window-row" style="display: none">
+        <label>Target window</label>
+        <div>
+          <div class="thumb-grid" id="window-grid"></div>
+          <button type="button" class="ghost-button" id="refresh-windows" style="margin-top: var(--space-xs)">
+            Refresh
+          </button>
+        </div>
+      </div>
+
+      <div class="row">
+        <label>FPS</label>
+        <select id="fps-select"></select>
+      </div>
+
+      <div class="row">
+        <label>Bitrate (Mbps)</label>
+        <input type="range" id="bitrate-slider" min="1" max="50" />
+      </div>
+
+      <div class="row">
+        <label>Streaming mode</label>
+        <div class="segmented" id="streaming-mode-toggle">
+          <button type="button" data-value="direct">Direct (1:1)</button>
+          <button type="button" data-value="mesh" class="active">Mesh (1:N)</button>
+        </div>
+      </div>
+
+      <div class="row" id="public-host-row" style="display: none">
+        <label>Viewer-facing IP</label>
+        <input type="text" id="public-host-input" />
+      </div>
+
+      <div class="row" id="host-token-row">
+        <label>Host token</label>
+        <input type="password" id="host-token-input" />
+      </div>
+    </div>
+
+    <button type="button" class="primary-button" id="start-stop-button">Start Streaming</button>
+
+    <hr />
+
+    <div class="status" id="status-block">
+      <div class="status-line" id="room-line" style="display: none">
+        <label style="width: auto">Room code:</label>
+        <span class="room-badge" id="room-code"></span>
+        <button type="button" class="ghost-button" id="copy-room-code">Copy</button>
+      </div>
+      <div class="status-line" id="watch-url-line" style="display: none">
+        <label style="width: auto">Watch URL:</label>
+        <span class="watch-url" id="watch-url"></span>
+        <button type="button" class="ghost-button" id="copy-watch-url">Copy</button>
+      </div>
+      <div class="metrics" id="metrics"></div>
+      <div class="idle-text" id="preparing-text" style="display: none">Preparing stream...</div>
+      <div class="warning-text" id="capture-warning" style="display: none"></div>
+    </div>
+
+    <div class="idle-text" id="idle-block">
+      Stopped. Configure settings above and press Start Streaming.
+      <div class="idle-note">
+        Supports exclusive fullscreen for DirectX (D3D11/D3D12) titles. OpenGL/Vulkan
+        exclusive fullscreen can't reach full frame rate due to DXGI limitations.
+      </div>
+    </div>
+
+    <div class="error-text" id="error-text" style="display: none"></div>
+  </div>
+
+  <script src="app.js"></script>
+</body>
+</html>

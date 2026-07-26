@@ -1,0 +1,5 @@
+[env]
+# Path the nvidia-video-codec-sdk crate's build.rs uses to find
+# nvEncodeAPI.lib / nvcuvid.lib. Copy this file to config.toml (gitignored,
+# machine-specific) and point it at your local Video Codec SDK install.
+NVIDIA_VIDEO_CODEC_SDK_PATH = "C:/path/to/Video_Codec_SDK_13.1.15/Lib/win/x64"

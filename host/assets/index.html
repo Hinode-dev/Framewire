@@ -1,0 +1,183 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>Framewire</title>
+<style>
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  #v { width: 100%; height: 100%; object-fit: contain; background: #000; display: block; }
+  #overlay {
+    position: fixed; top: 8px; left: 8px; color: #eee; background: rgba(0,0,0,0.55);
+    font-family: monospace; font-size: 13px; padding: 8px 10px; border-radius: 4px;
+    white-space: pre; line-height: 1.4; pointer-events: none;
+  }
+  #hint {
+    position: fixed; bottom: 8px; left: 8px; color: #aaa; background: rgba(0,0,0,0.4);
+    font-family: monospace; font-size: 11px; padding: 4px 8px; border-radius: 4px;
+  }
+</style>
+</head>
+<body>
+  <video id="v" autoplay muted playsinline></video>
+  <div id="overlay"></div>
+  <div id="hint">S: 統計表示切替 / F: フルスクリーン</div>
+
+<script>
+const video = document.getElementById('v');
+const overlay = document.getElementById('overlay');
+let statsVisible = true;
+
+const stats = {
+  phase: "connecting",
+  resolution: "-",
+  fps: 0,
+  bitrateKbps: 0,
+  rttMs: 0,
+  packetLossPct: 0,
+  error: null,
+};
+
+function render() {
+  overlay.style.display = statsVisible ? 'block' : 'none';
+  overlay.textContent =
+    `Framewire\n` +
+    `状態: ${stats.phase}\n` +
+    `解像度: ${stats.resolution}\n` +
+    `fps: ${stats.fps.toFixed(1)}\n` +
+    `ビットレート: ${stats.bitrateKbps.toFixed(0)} kbps\n` +
+    `RTT: ${stats.rttMs.toFixed(0)} ms\n` +
+    `パケットロス: ${stats.packetLossPct.toFixed(2)} %` +
+    (stats.error ? `\nエラー: ${stats.error}` : '');
+}
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 's' || e.key === 'S') {
+    statsVisible = !statsVisible;
+    render();
+  } else if (e.key === 'f' || e.key === 'F') {
+    if (document.fullscreenElement) {
+      document.exitFullscreen();
+    } else {
+      document.documentElement.requestFullscreen();
+    }
+  }
+});
+
+// Establishes one connection and throws once it's detected as
+// disconnected (failed/closed); the caller's main() loops this to
+// reconnect automatically.
+async function connectOnce(onConnected) {
+  // TURN fallback: the host distributes coturn credentials.
+  let iceServers = [];
+  try {
+    const cfg = await fetch('/ice-config').then((r) => r.json());
+    iceServers = cfg.iceServers ?? [];
+  } catch (e) {
+    console.warn('ICE設定の取得に失敗（STUN/TURNなしで続行）', e);
+  }
+
+  const pc = new RTCPeerConnection({ iceServers });
+  pc.addTransceiver('video', { direction: 'recvonly' });
+
+  pc.ontrack = (event) => {
+    video.srcObject = event.streams[0];
+  };
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+
+  await new Promise((resolve) => {
+    if (pc.iceGatheringState === 'complete') {
+      resolve();
+      return;
+    }
+    pc.addEventListener('icegatheringstatechange', () => {
+      if (pc.iceGatheringState === 'complete') resolve();
+    });
+  });
+
+  const resp = await fetch('/offer', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ type: pc.localDescription.type, sdp: pc.localDescription.sdp }),
+  });
+  if (!resp.ok) {
+    pc.close();
+    throw new Error(`オファー送信に失敗: HTTP ${resp.status}`);
+  }
+  const answer = await resp.json();
+  await pc.setRemoteDescription(answer);
+
+  stats.phase = "接続済み";
+  stats.error = null;
+  render();
+  onConnected();
+
+  let lastBytes = 0;
+  let lastTime = performance.now();
+
+  const statsInterval = setInterval(async () => {
+    const now = performance.now();
+    const elapsedSec = (now - lastTime) / 1000;
+
+    const report = await pc.getStats();
+    report.forEach((r) => {
+      if (r.type === 'inbound-rtp' && r.kind === 'video') {
+        stats.fps = r.framesPerSecond ?? stats.fps;
+        stats.resolution = r.frameWidth && r.frameHeight ? `${r.frameWidth}x${r.frameHeight}` : stats.resolution;
+        const bytes = r.bytesReceived ?? lastBytes;
+        if (elapsedSec > 0) {
+          stats.bitrateKbps = ((bytes - lastBytes) * 8) / 1000 / elapsedSec;
+        }
+        lastBytes = bytes;
+        const lost = r.packetsLost ?? 0;
+        const received = r.packetsReceived ?? 0;
+        const total = lost + received;
+        stats.packetLossPct = total > 0 ? (lost / total) * 100 : 0;
+      }
+      if (r.type === 'candidate-pair' && r.state === 'succeeded' && r.currentRoundTripTime != null) {
+        stats.rttMs = r.currentRoundTripTime * 1000;
+      }
+    });
+    lastTime = now;
+    render();
+  }, 1000);
+
+  try {
+    // 'disconnected' can self-recover from a brief network blip, so wait
+    // for 'failed'/'closed' before treating it as needing a full reconnect.
+    await new Promise((resolve) => {
+      pc.addEventListener('connectionstatechange', () => {
+        if (pc.connectionState === 'failed' || pc.connectionState === 'closed') {
+          resolve();
+        }
+      });
+    });
+  } finally {
+    clearInterval(statsInterval);
+    pc.close();
+  }
+  throw new Error('接続が切断されました');
+}
+
+async function main() {
+  let backoffMs = 1000;
+  while (true) {
+    try {
+      await connectOnce(() => { backoffMs = 1000; });
+    } catch (e) {
+      stats.phase = "再接続待機中";
+      stats.error = String(e);
+      render();
+      console.warn('[framewire] 接続に失敗、再接続します', e);
+    }
+    await new Promise((r) => setTimeout(r, backoffMs));
+    backoffMs = Math.min(backoffMs * 2, 15000);
+  }
+}
+
+main();
+render();
+</script>
+</body>
+</html>
