@@ -5,13 +5,16 @@
 const downloadButton = document.getElementById('download-button');
 const versionLabel = document.getElementById('version-label');
 
-fetch('https://api.github.com/repos/Hinode-dev/Framewire/releases/latest')
+// /releases/latest only ever returns non-prerelease, non-draft releases —
+// this project ships betas, so it would 404 forever. /releases (sorted
+// newest-first) picks up the most recent release regardless of that flag.
+fetch('https://api.github.com/repos/Hinode-dev/Framewire/releases?per_page=1')
   .then((res) => (res.ok ? res.json() : Promise.reject()))
-  .then((release) => {
-    const asset = release.assets.find((a) => a.name === 'framewire.exe');
+  .then(([release]) => {
+    const asset = release?.assets.find((a) => a.name === 'framewire.exe');
     if (asset) {
       downloadButton.href = asset.browser_download_url;
     }
-    versionLabel.textContent = release.tag_name ? `Latest: ${release.tag_name}` : '';
+    versionLabel.textContent = release?.tag_name ? `Latest: ${release.tag_name}` : '';
   })
   .catch(() => {});
