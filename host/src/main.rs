@@ -9,6 +9,7 @@ mod debug_dump;
 mod encode;
 mod shaders;
 mod transport;
+mod upnp;
 
 mod tauri_app;
 

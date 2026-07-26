@@ -29,7 +29,9 @@ use tokio_tungstenite::tungstenite::Message as WsMessage;
 use tokio_tungstenite::{MaybeTlsStream, WebSocketStream};
 use webrtc::api::interceptor_registry::register_default_interceptors;
 use webrtc::api::media_engine::{MediaEngine, MIME_TYPE_H264};
+use webrtc::api::setting_engine::SettingEngine;
 use webrtc::api::APIBuilder;
+use webrtc::ice_transport::ice_candidate_type::RTCIceCandidateType;
 use webrtc::ice_transport::ice_server::RTCIceServer;
 use webrtc::interceptor::registry::Registry;
 use webrtc::media::Sample;
@@ -46,6 +48,9 @@ use webrtc::rtp_transceiver::rtp_sender::RTCRtpSender;
 use webrtc::rtp_transceiver::RTCPFeedback;
 use webrtc::track::track_local::track_local_static_sample::TrackLocalStaticSample;
 use webrtc::track::track_local::TrackLocal;
+use webrtc_ice::udp_network::{EphemeralUDP, UDPNetwork};
+
+use crate::upnp::PortForward;
 
 /// Builds a `MediaEngine` registering only H.264 High Profile, matching
 /// what NVENC actually outputs.
@@ -198,9 +203,13 @@ struct AppState {
     /// viewers' desired bitrates.
     target_bitrate_bps: Arc<AtomicU32>,
     max_bitrate_bps: u32,
+    /// UPnP port mapping, if one could be set up — lets viewers on a
+    /// different network than the host connect P2P without a TURN relay
+    /// (see `upnp.rs`). `None` just means today's STUN-only behavior.
+    port_forward: Option<PortForward>,
 }
 
-fn new_app_state(ice_servers: Vec<RTCIceServer>, bitrate_bps: u32) -> Arc<AppState> {
+async fn new_app_state(ice_servers: Vec<RTCIceServer>, bitrate_bps: u32) -> Arc<AppState> {
     Arc::new(AppState {
         viewers: Mutex::new(HashMap::new()),
         viewer_bitrates: Arc::new(Mutex::new(HashMap::new())),
@@ -208,6 +217,7 @@ fn new_app_state(ice_servers: Vec<RTCIceServer>, bitrate_bps: u32) -> Arc<AppSta
         ice_servers,
         target_bitrate_bps: Arc::new(AtomicU32::new(bitrate_bps)),
         max_bitrate_bps: bitrate_bps,
+        port_forward: crate::upnp::try_setup().await,
     })
 }
 
@@ -263,7 +273,7 @@ pub async fn start_server(
     ice_servers: Vec<RTCIceServer>,
     bitrate_bps: u32,
 ) -> anyhow::Result<FrameSender> {
-    let state = new_app_state(ice_servers, bitrate_bps);
+    let state = new_app_state(ice_servers, bitrate_bps).await;
 
     let app = Router::new()
         .route("/", get(index))
@@ -330,9 +340,22 @@ async fn create_viewer_connection(
     let mut registry = Registry::new();
     registry = register_default_interceptors(registry, &mut media_engine)?;
 
+    let mut setting_engine = SettingEngine::default();
+    if let Some(pf) = &state.port_forward {
+        // The UPnP-mapped port range is 1:1 (external == internal), so a
+        // straight IP swap on whichever port ICE happens to pick produces a
+        // real, externally-reachable candidate — no TURN relay needed even
+        // for viewers on a different network.
+        if let Ok(udp) = EphemeralUDP::new(pf.port_min, pf.port_max) {
+            setting_engine.set_udp_network(UDPNetwork::Ephemeral(udp));
+        }
+        setting_engine.set_nat_1to1_ips(vec![pf.external_ip.to_string()], RTCIceCandidateType::Srflx);
+    }
+
     let api = APIBuilder::new()
         .with_media_engine(media_engine)
         .with_interceptor_registry(registry)
+        .with_setting_engine(setting_engine)
         .build();
 
     let config = RTCConfiguration {
@@ -467,7 +490,7 @@ pub async fn start_mesh_publisher(
     ice_servers: Vec<RTCIceServer>,
     bitrate_bps: u32,
 ) -> anyhow::Result<(FrameSender, String)> {
-    let state = new_app_state(ice_servers, bitrate_bps);
+    let state = new_app_state(ice_servers, bitrate_bps).await;
 
     let (room_code, outbound, ws_rx) = connect_host_signal(&backend_ws_base, None).await?;
     println!("[transport] connected to backend signaling (room={room_code})");

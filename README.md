@@ -3,8 +3,6 @@
 # <img src="backend/site/favicon.png" width="24" alt="Framewire Icon" /> Framewire
 **A high-fps, low-latency one-way game screen sharing tool**
 
-**A high-fps, low-latency one-way game screen sharing tool**
-
 [![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](#license)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6.svg)](#requirements)
 [![Status: WIP](https://img.shields.io/badge/status-personal%20MVP%20%2F%20work%20in%20progress-orange.svg)](#status--roadmap)
